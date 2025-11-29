@@ -54,7 +54,12 @@ fn main(in: FragmentInput) -> FragmentOutput {
     var finalColor = diffuseColor.rgb * totalLightContrib.rgb;
     var output: FragmentOutput;
     output.baseColor = vec4<f32>(finalColor, 1.0);
-    output.extractedColor = vec4<f32>(1.0, 0.0, 0.0, 1.0);
+    let brightness = dot(finalColor, vec3(0.05, 0.05, 0.05));
+    output.extractedColor = select(
+        vec4<f32>(0.0, 0.0, 0.0, 1.0),
+        output.baseColor,
+        brightness > 0.01
+    );
 
     return output;
 }

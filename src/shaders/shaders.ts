@@ -10,6 +10,8 @@ import clusteredDeferredFragRaw from './clustered_deferred.fs.wgsl?raw';
 import clusteredDeferredFullscreenVertRaw from './clustered_deferred_fullscreen.vs.wgsl?raw';
 import clusteredDeferredFullscreenFragRaw from './clustered_deferred_fullscreen.fs.wgsl?raw';
 import bloomFragRaw from './bloom.fs.wgsl?raw';
+import gaussianBlurHorizontalRaw from './post_processing/gaussian_blur_horizontal.fs.wgsl?raw';
+import gaussianBlurVerticalRaw from './post_processing/gaussian_blur_vertical.fs.wgsl?raw';
 
 import moveLightsComputeRaw from './move_lights.cs.wgsl?raw';
 import clusteringComputeRaw from './clustering.cs.wgsl?raw';
@@ -55,11 +57,13 @@ export const naiveFragSrc: string = processShaderRaw(naiveFragRaw);
 
 export const forwardPlusFragSrc: string = processShaderRaw(forwardPlusFragRaw);
 
+export const fullscreenTriangleVertSrc: string = processShaderRaw(clusteredDeferredFullscreenVertRaw);
 export const clusteredDeferredFragSrc: string = processShaderRaw(clusteredDeferredFragRaw);
-export const clusteredDeferredFullscreenVertSrc: string = processShaderRaw(clusteredDeferredFullscreenVertRaw);
 export const clusteredDeferredFullscreenFragSrc: string = processShaderRaw(clusteredDeferredFullscreenFragRaw);
 
 export const bloomFragSrc: string = processShaderRaw(bloomFragRaw);
+export const gaussianBlurHorizontalFragSrc: string = processShaderRaw(gaussianBlurHorizontalRaw);
+export const gaussianBlurVerticalFragSrc: string = processShaderRaw(gaussianBlurVerticalRaw);
 
 export const moveLightsComputeSrc: string = processShaderRaw(moveLightsComputeRaw);
 export const clusteringComputeSrc: string = processShaderRaw(clusteringComputeRaw);

@@ -12,6 +12,9 @@ export class ClusteredDeferredRenderer extends renderer.Renderer {
     gBufferBindGroup: GPUBindGroup;
     bloomBindGroupLayout: GPUBindGroupLayout;
     bloomBindGroup: GPUBindGroup;
+    gaussianBlurBindGroupLayout: GPUBindGroupLayout;
+    gaussianBlurHorizontalBindGroup: GPUBindGroup;
+    gaussianBlurVerticalBindGroup: GPUBindGroup;
     /***************************************/
 
     /** Texture Variables **/
@@ -20,22 +23,23 @@ export class ClusteredDeferredRenderer extends renderer.Renderer {
     gBufferNormalTexture: GPUTexture;
     gBufferAlbedoTexture: GPUTexture;
     fullScreenTexture: GPUTexture;
-    bloomExtractionTexture: GPUTexture;
-    bloomBlurTexture: GPUTexture;
+    bloomBlurTexture1: GPUTexture;
+    bloomBlurTexture2: GPUTexture;
 
     depthTextureView: GPUTextureView;
     gBufferPositionTextureView: GPUTextureView;
     gBufferNormalTextureView: GPUTextureView;
     gBufferAlbedoTextureView: GPUTextureView;
     fullScreenTextureView: GPUTextureView;
-    bloomExtractionTextureView: GPUTextureView;
-    bloomBlurTextureView: GPUTextureView;
+    bloomBlurTexture1View: GPUTextureView;
+    bloomBlurTexture2View: GPUTextureView;
     /***************************************/
 
     /** Pipeline Variables **/
     gBufferPass: GPURenderPipeline; // the pass to populate g buffers
     bloomExtractionPass: GPURenderPipeline; // the pass to render to both a fullscreen texture and a bright pixel texture
-    bloomBlurPass: GPURenderPipeline; // the pass to blur the bright pixel texture
+    gaussianBlurHorizontalPass: GPURenderPipeline; // the pass to blur the bright pixel texture
+    gaussianBlurVerticalPass: GPURenderPipeline; // the pass to blur the bright pixel texture
     finalPass: GPURenderPipeline; // the pass the combine the fullscreen texture and the blurred bright pixel texture
     /***************************************/
 
@@ -137,7 +141,7 @@ export class ClusteredDeferredRenderer extends renderer.Renderer {
             format: gBufferTextureFormat,
             usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING
         });
-        this.bloomExtractionTexture = renderer.device.createTexture({
+        this.bloomBlurTexture1 = renderer.device.createTexture({
             size: {
                 width: canvasWidth,
                 height: canvasHeight,
@@ -146,7 +150,7 @@ export class ClusteredDeferredRenderer extends renderer.Renderer {
             format: gBufferTextureFormat,
             usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING
         });
-        this.bloomBlurTexture = renderer.device.createTexture({
+        this.bloomBlurTexture2 = renderer.device.createTexture({
             size: {
                 width: canvasWidth,
                 height: canvasHeight,
@@ -161,8 +165,8 @@ export class ClusteredDeferredRenderer extends renderer.Renderer {
         this.gBufferNormalTextureView = this.gBufferNormalTexture.createView();
         this.gBufferAlbedoTextureView = this.gBufferAlbedoTexture.createView();
         this.fullScreenTextureView = this.fullScreenTexture.createView();
-        this.bloomExtractionTextureView = this.bloomExtractionTexture.createView();
-        this.bloomBlurTextureView = this.bloomBlurTexture.createView();
+        this.bloomBlurTexture1View = this.bloomBlurTexture1.createView();
+        this.bloomBlurTexture2View = this.bloomBlurTexture2.createView();
         /***************************************************************************/
 
         /** Define G-Buffer Bind Group **/
@@ -252,7 +256,43 @@ export class ClusteredDeferredRenderer extends renderer.Renderer {
                 },
                 {
                     binding: 1,
-                    resource: this.bloomBlurTextureView
+                    resource: this.bloomBlurTexture1View
+                }
+            ]
+        });
+        /***************************************************************************/
+
+        /** Define Gaussian Blur Bind Groups **/
+        this.gaussianBlurBindGroupLayout = renderer.device.createBindGroupLayout({
+            label: "gaussian blur horizontal bind group layout",
+            entries: [
+                {
+                    binding: 0,
+                    visibility: GPUShaderStage.FRAGMENT,
+                    texture: {
+                        sampleType: "float",
+                        viewDimension: "2d"
+                    }
+                }
+            ]
+        });
+        this.gaussianBlurHorizontalBindGroup = renderer.device.createBindGroup({
+            label: "gaussian blur horizontal bind group",
+            layout: this.gaussianBlurBindGroupLayout,
+            entries: [
+                {
+                    binding: 0,
+                    resource: this.bloomBlurTexture1View
+                }
+            ]
+        });
+        this.gaussianBlurVerticalBindGroup = renderer.device.createBindGroup({
+            label: "gaussian blur vertical bind group",
+            layout: this.gaussianBlurBindGroupLayout,
+            entries: [
+                {
+                    binding: 0,
+                    resource: this.bloomBlurTexture2View
                 }
             ]
         });
@@ -309,7 +349,7 @@ export class ClusteredDeferredRenderer extends renderer.Renderer {
             vertex: {
                 module: renderer.device.createShaderModule({
                     label: "Bloom extraction pass vert shader",
-                    code: shaders.clusteredDeferredFullscreenVertSrc
+                    code: shaders.fullscreenTriangleVertSrc
                 }),
             },
             fragment: {
@@ -321,6 +361,59 @@ export class ClusteredDeferredRenderer extends renderer.Renderer {
                 targets: [
                     { format: gBufferTextureFormat },
                     { format: gBufferTextureFormat }
+                ]
+            }
+        });
+        /***************************************************************************/
+
+        /** Define Gaussian Blur Passes **/
+        this.gaussianBlurHorizontalPass = renderer.device.createRenderPipeline({
+            label: "gaussian blur horizontal pass pipeline",
+            layout: renderer.device.createPipelineLayout({
+                label: "gaussian blur horizontal pass pipeline layout",
+                bindGroupLayouts: [
+                    this.gaussianBlurBindGroupLayout
+                ]
+            }),
+            vertex: {
+                module: renderer.device.createShaderModule({
+                    label: "Gaussian blur horizontal pass vert shader",
+                    code: shaders.fullscreenTriangleVertSrc
+                }),
+            },
+            fragment: {
+                module: renderer.device.createShaderModule({
+                    label: "Gaussian blur horizontal pass frag shader",
+                    code: shaders.gaussianBlurHorizontalFragSrc
+                }),
+                entryPoint: "main",
+                targets: [
+                    { format: gBufferTextureFormat },
+                ]
+            }
+        });
+        this.gaussianBlurVerticalPass = renderer.device.createRenderPipeline({
+            label: "gaussian blur vertical pass pipeline",
+            layout: renderer.device.createPipelineLayout({
+                label: "gaussian blur vertical pass pipeline layout",
+                bindGroupLayouts: [
+                    this.gaussianBlurBindGroupLayout
+                ]
+            }),
+            vertex: {
+                module: renderer.device.createShaderModule({
+                    label: "Gaussian blur vertical pass vert shader",
+                    code: shaders.fullscreenTriangleVertSrc
+                }),
+            },
+            fragment: {
+                module: renderer.device.createShaderModule({
+                    label: "Gaussian blur vertical pass frag shader",
+                    code: shaders.gaussianBlurVerticalFragSrc
+                }),
+                entryPoint: "main",
+                targets: [
+                    { format: gBufferTextureFormat },
                 ]
             }
         });
@@ -338,7 +431,7 @@ export class ClusteredDeferredRenderer extends renderer.Renderer {
             vertex: {
                 module: renderer.device.createShaderModule({
                     label: "final pass vert shader",
-                    code: shaders.clusteredDeferredFullscreenVertSrc
+                    code: shaders.fullscreenTriangleVertSrc
                 }),
             },
             fragment: {
@@ -415,7 +508,7 @@ export class ClusteredDeferredRenderer extends renderer.Renderer {
 
     runBloomExtractionPass() {
         const bloomExtractionDescriptor: GPURenderPassDescriptor = {
-            label: "Clustered Deferred fullscreen render pass",
+            label: "bloom extraction render pass",
             colorAttachments: [
                 {
                     view: this.fullScreenTextureView,
@@ -424,7 +517,7 @@ export class ClusteredDeferredRenderer extends renderer.Renderer {
                     storeOp: "store"
                 },
                 {
-                    view: this.bloomExtractionTextureView,
+                    view: this.bloomBlurTexture1View,
                     clearValue: [0, 0, 0, 0],
                     loadOp: "clear",
                     storeOp: "store"
@@ -444,6 +537,53 @@ export class ClusteredDeferredRenderer extends renderer.Renderer {
 
         passEncoder.end();
         renderer.device.queue.submit([commandEncoder.finish()]);
+    }
+
+    runGaussianBlurPass(blurStrength: number = 3) {
+        const gaussianHorizontalDescriptor : GPURenderPassDescriptor = {
+            label: "gaussian blur horizontal render pass",
+            colorAttachments: [
+                {
+                    view: this.bloomBlurTexture2View,
+                    clearValue: [0, 0, 0, 0],
+                    loadOp: "clear",
+                    storeOp: "store"
+                }
+            ]
+        }
+
+        const gaussianVerticalDescriptor : GPURenderPassDescriptor = {
+            label: "gaussian blur vertical render pass",
+            colorAttachments: [
+                {
+                    view: this.bloomBlurTexture1View,
+                    clearValue: [0, 0, 0, 0],
+                    loadOp: "clear",
+                    storeOp: "store"
+                }
+            ]
+        }
+
+        for (var i = 0; i < blurStrength; ++i) {
+            const commandEncoder1 = renderer.device.createCommandEncoder();
+            const commandEncoder2 = renderer.device.createCommandEncoder();
+            const passEncoder1 = commandEncoder1.beginRenderPass(gaussianHorizontalDescriptor);
+            const passEncoder2 = commandEncoder2.beginRenderPass(gaussianVerticalDescriptor);
+
+            passEncoder1.setPipeline(this.gaussianBlurHorizontalPass);
+            passEncoder2.setPipeline(this.gaussianBlurVerticalPass);
+
+            passEncoder1.setBindGroup(0, this.gaussianBlurHorizontalBindGroup);
+            passEncoder2.setBindGroup(0, this.gaussianBlurVerticalBindGroup);
+
+            passEncoder1.draw(3);
+            passEncoder1.end();
+            renderer.device.queue.submit([commandEncoder1.finish()]);
+
+            passEncoder2.draw(3);
+            passEncoder2.end();
+            renderer.device.queue.submit([commandEncoder2.finish()]);
+        }
     }
 
     runFinalPass() {
@@ -480,6 +620,7 @@ export class ClusteredDeferredRenderer extends renderer.Renderer {
         // - run the fullscreen pass, which reads from the G-buffer and performs lighting calculations
         this.runGBufferPass();
         this.runBloomExtractionPass();
+        this.runGaussianBlurPass();
         this.runFinalPass();
     }
 }

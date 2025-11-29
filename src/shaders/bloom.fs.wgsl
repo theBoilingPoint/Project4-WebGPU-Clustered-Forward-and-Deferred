@@ -10,6 +10,7 @@ struct FragmentInput
 fn main(in: FragmentInput) -> @location(0) vec4f {
     let pixelPos: vec2<u32> = vec2<u32>(in.fragPos.xy);
     let baseColor = textureLoad(fullscreenTex, pixelPos, 0);
+    let brightColor = textureLoad(blurredBrightnessTex, pixelPos, 0);
 
-    return vec4(baseColor.rgb, 1.0);
+    return vec4(baseColor.rgb + brightColor.rgb, 1.0);
 }
