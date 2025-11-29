@@ -33,6 +33,65 @@ const stage = new Stage(scene, lights, camera, stats);
 
 var renderer: Renderer | undefined;
 
+// Bloom controls (only for clustered deferred)
+const bloomControls = {
+    enabled: false,
+    strength: 1
+};
+
+let bloomEnabledController: any = null;
+let bloomStrengthController: any = null;
+
+function updateBloomControls() {
+    const isClusteredDeferred = renderer instanceof ClusteredDeferredRenderer;
+    
+    if (isClusteredDeferred) {
+        // Add bloom controls if they don't exist
+        if (!bloomEnabledController) {
+            bloomEnabledController = gui.add(bloomControls, 'enabled').name('Bloom Enabled');
+            bloomEnabledController.onChange(() => {
+                updateBloomStrengthVisibility();
+                if (renderer instanceof ClusteredDeferredRenderer) {
+                    renderer.setBloomEnabled(bloomControls.enabled);
+                }
+            });
+        }
+        updateBloomStrengthVisibility();
+    } else {
+        // Remove bloom controls if they exist
+        if (bloomEnabledController) {
+            gui.remove(bloomEnabledController);
+            bloomEnabledController = null;
+        }
+        if (bloomStrengthController) {
+            gui.remove(bloomStrengthController);
+            bloomStrengthController = null;
+        }
+    }
+}
+
+function updateBloomStrengthVisibility() {
+    if (bloomControls.enabled) {
+        // Add strength slider if it doesn't exist
+        if (!bloomStrengthController) {
+            bloomStrengthController = gui.add(bloomControls, 'strength').min(1).max(5).step(1).name('Bloom Strength');
+            bloomStrengthController.onChange(() => {
+                // Round to integer to ensure it's always an integer value
+                bloomControls.strength = Math.round(bloomControls.strength);
+                if (renderer instanceof ClusteredDeferredRenderer) {
+                    renderer.setBloomStrength(bloomControls.strength);
+                }
+            });
+        }
+    } else {
+        // Remove strength slider if it exists
+        if (bloomStrengthController) {
+            gui.remove(bloomStrengthController);
+            bloomStrengthController = null;
+        }
+    }
+}
+
 function setRenderer(mode: string) {
     renderer?.stop();
 
@@ -47,16 +106,21 @@ function setRenderer(mode: string) {
             renderer = new ClusteredDeferredRenderer(stage);
             break;
     }
+    
+    // Update bloom controls visibility based on renderer
+    updateBloomControls();
+    
+    // Set initial bloom state if clustered deferred
+    if (renderer instanceof ClusteredDeferredRenderer) {
+        renderer.setBloomEnabled(bloomControls.enabled);
+        renderer.setBloomStrength(bloomControls.strength);
+    }
 }
 
 const renderModes = { naive: 'naive', forwardPlus: 'forward+', clusteredDeferred: 'clustered deferred' };
-let renderModeController = gui.add({ mode: renderModes.naive }, 'mode', renderModes);
-renderModeController.onChange(setRenderer);
+let renderModeController = gui.add({ mode: renderModes.clusteredDeferred }, 'mode', renderModes);
+renderModeController.onChange((value: string) => {
+    setRenderer(value);
+});
 
 setRenderer(renderModeController.getValue());
-
-// const postProcessingEffects = {
-//     bloom: 'bloom',
-//     toon: 'toon'
-// }
-// let postProcessingController = gui.add({ effect: postProcessingEffects.bloom }, 'effect', postProcessingEffects);

@@ -1,6 +1,7 @@
 import * as renderer from '../renderer';
 import * as shaders from '../shaders/shaders';
 import { Stage } from '../stage/stage';
+import {canvasFormat} from "../renderer";
 
 export class ClusteredDeferredRenderer extends renderer.Renderer {
     // TODO-3: add layouts, pipelines, textures, etc. needed for Forward+ here
@@ -37,10 +38,17 @@ export class ClusteredDeferredRenderer extends renderer.Renderer {
 
     /** Pipeline Variables **/
     gBufferPass: GPURenderPipeline; // the pass to populate g buffers
+    finalPass: GPURenderPipeline;
+    // passes for bloom post processing effect
     bloomExtractionPass: GPURenderPipeline; // the pass to render to both a fullscreen texture and a bright pixel texture
     gaussianBlurHorizontalPass: GPURenderPipeline; // the pass to blur the bright pixel texture
     gaussianBlurVerticalPass: GPURenderPipeline; // the pass to blur the bright pixel texture
-    finalPass: GPURenderPipeline; // the pass the combine the fullscreen texture and the blurred bright pixel texture
+    bloomFinalPass: GPURenderPipeline; // the pass the combine the fullscreen texture and the blurred bright pixel texture
+    /***************************************/
+
+    /** Bloom State **/
+    bloomEnabled: boolean = false;
+    bloomStrength: number = 1.0;
     /***************************************/
 
     constructor(stage: Stage) {
@@ -324,13 +332,42 @@ export class ClusteredDeferredRenderer extends renderer.Renderer {
             fragment: {
                 module: renderer.device.createShaderModule({
                     label: "G-buffer pass frag shader",
-                    code: shaders.clusteredDeferredFragSrc,
+                    code: shaders.gBufferFragSrc,
                 }),
                 entryPoint: "main",
                 targets: [
                     { format: gBufferTextureFormat },
                     { format: gBufferTextureFormat },
                     { format: gBufferTextureFormat }
+                ]
+            }
+        });
+        /***************************************************************************/
+
+        /** Define Final Pass (without any post-processing) **/
+        this.finalPass = renderer.device.createRenderPipeline({
+            label: "final pass pipeline",
+            layout: renderer.device.createPipelineLayout({
+                label: "final pass pipeline layout",
+                bindGroupLayouts: [
+                    this.sceneUniformsBindGroupLayout,
+                    this.gBufferBindGroupLayout
+                ]
+            }),
+            vertex: {
+                module: renderer.device.createShaderModule({
+                    label: "final pass vert shader",
+                    code: shaders.fullscreenTriangleVertSrc
+                }),
+            },
+            fragment: {
+                module: renderer.device.createShaderModule({
+                    label: "final pass frag shader",
+                    code: shaders.clusteredDeferredFullscreenFragSrc,
+                }),
+                entryPoint: "main",
+                targets: [
+                    { format: canvasFormat }
                 ]
             }
         });
@@ -355,7 +392,7 @@ export class ClusteredDeferredRenderer extends renderer.Renderer {
             fragment: {
                 module: renderer.device.createShaderModule({
                     label: "Bloom extraction pass frag shader",
-                    code: shaders.clusteredDeferredFullscreenFragSrc,
+                    code: shaders.bloomExtractionFragSrc,
                 }),
                 entryPoint: "main",
                 targets: [
@@ -420,24 +457,24 @@ export class ClusteredDeferredRenderer extends renderer.Renderer {
         /***************************************************************************/
 
         /** Define Final Pass **/
-        this.finalPass = renderer.device.createRenderPipeline({
-            label: "final pass pipeline",
+        this.bloomFinalPass = renderer.device.createRenderPipeline({
+            label: "bloom final pass pipeline",
             layout: renderer.device.createPipelineLayout({
-                label: "final pipeline layout",
+                label: "bloom final pipeline layout",
                 bindGroupLayouts: [
                     this.bloomBindGroupLayout
                 ]
             }),
             vertex: {
                 module: renderer.device.createShaderModule({
-                    label: "final pass vert shader",
+                    label: "bloom final pass vert shader",
                     code: shaders.fullscreenTriangleVertSrc
                 }),
             },
             fragment: {
                 module: renderer.device.createShaderModule({
-                    label: "Final pass frag shader",
-                    code: shaders.bloomFragSrc,
+                    label: "bloom final pass frag shader",
+                    code: shaders.bloomCombineFragSrc,
                 }),
                 entryPoint: "main",
                 targets: [
@@ -448,6 +485,16 @@ export class ClusteredDeferredRenderer extends renderer.Renderer {
             }
         })
     }
+
+    /** Public functions **/
+    setBloomEnabled(enabled: boolean) {
+        this.bloomEnabled = enabled;
+    }
+
+    setBloomStrength(strength: number) {
+        this.bloomStrength = strength;
+    }
+    /***************************************/
 
     // Pass submission
     runGBufferPass() {
@@ -506,6 +553,35 @@ export class ClusteredDeferredRenderer extends renderer.Renderer {
         renderer.device.queue.submit([commandEncoder.finish()]);
     }
 
+    runFinalPass() {
+        const canvasTextureView = renderer.context.getCurrentTexture().createView();
+
+        const fullScreenPassDescriptor: GPURenderPassDescriptor = {
+            label: "Clustered Deferred fullscreen render pass",
+            colorAttachments: [
+                {
+                    view: canvasTextureView,
+                    clearValue: [0, 0, 0, 0],
+                    loadOp: "clear",
+                    storeOp: "store"
+                }
+            ]
+        };
+
+        const commandEncoder = renderer.device.createCommandEncoder();
+        const passEncoder = commandEncoder.beginRenderPass(fullScreenPassDescriptor);
+
+        passEncoder.setPipeline(this.finalPass);
+
+        passEncoder.setBindGroup(shaders.constants.bindGroup_scene, this.sceneUniformsBindGroup);
+        passEncoder.setBindGroup(1, this.gBufferBindGroup);
+
+        passEncoder.draw(3);
+
+        passEncoder.end();
+        renderer.device.queue.submit([commandEncoder.finish()]);
+    }
+
     runBloomExtractionPass() {
         const bloomExtractionDescriptor: GPURenderPassDescriptor = {
             label: "bloom extraction render pass",
@@ -539,7 +615,7 @@ export class ClusteredDeferredRenderer extends renderer.Renderer {
         renderer.device.queue.submit([commandEncoder.finish()]);
     }
 
-    runGaussianBlurPass(blurStrength: number = 3) {
+    runGaussianBlurPass() {
         const gaussianHorizontalDescriptor : GPURenderPassDescriptor = {
             label: "gaussian blur horizontal render pass",
             colorAttachments: [
@@ -564,7 +640,7 @@ export class ClusteredDeferredRenderer extends renderer.Renderer {
             ]
         }
 
-        for (var i = 0; i < blurStrength; ++i) {
+        for (var i = 0; i < this.bloomStrength; ++i) {
             const commandEncoder1 = renderer.device.createCommandEncoder();
             const commandEncoder2 = renderer.device.createCommandEncoder();
             const passEncoder1 = commandEncoder1.beginRenderPass(gaussianHorizontalDescriptor);
@@ -586,11 +662,11 @@ export class ClusteredDeferredRenderer extends renderer.Renderer {
         }
     }
 
-    runFinalPass() {
+    runBloomFinalPass() {
         const canvasTextureView = renderer.context.getCurrentTexture().createView();
 
         const fullScreenPassDescriptor: GPURenderPassDescriptor = {
-            label: "Clustered Deferred fullscreen render pass",
+            label: "bloom combine render pass",
             colorAttachments: [
                 {
                     view: canvasTextureView,
@@ -604,7 +680,7 @@ export class ClusteredDeferredRenderer extends renderer.Renderer {
         const commandEncoder = renderer.device.createCommandEncoder();
         const passEncoder = commandEncoder.beginRenderPass(fullScreenPassDescriptor);
 
-        passEncoder.setPipeline(this.finalPass);
+        passEncoder.setPipeline(this.bloomFinalPass);
         passEncoder.setBindGroup(0, this.bloomBindGroup);
 
         passEncoder.draw(3);
@@ -614,13 +690,18 @@ export class ClusteredDeferredRenderer extends renderer.Renderer {
     }
 
     override draw() {
-        // TODO-3: run the Forward+ rendering pass:
+        // TODO-3: run the clustered deferred rendering pass:
         // - run the clustering compute shader
         // - run the G-buffer pass, outputting position, albedo, and normals
         // - run the fullscreen pass, which reads from the G-buffer and performs lighting calculations
         this.runGBufferPass();
-        this.runBloomExtractionPass();
-        this.runGaussianBlurPass();
-        this.runFinalPass();
+        if (this.bloomEnabled) {
+            this.runBloomExtractionPass();
+            this.runGaussianBlurPass();
+            this.runBloomFinalPass();
+        }
+        else {
+            this.runFinalPass();
+        }
     }
 }
