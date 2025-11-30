@@ -29,13 +29,13 @@ fn computeColor(pos: vec3<f32>, nor: vec3<f32>, diffuseColor: vec4<f32>) -> vec3
     let k = clamp(u32(floor(clusterZf)), 0u, CLUSTER_DIMENSIONS.z - 1u);
 
     let clusterIdx = clamp(i * CLUSTER_DIMENSIONS.y * CLUSTER_DIMENSIONS.z + j * CLUSTER_DIMENSIONS.z + k, 0u, ${numOfClusters}u);
-    let cluster = clusterSet.clusters[clusterIdx];
-
+    let clusterPtr = &clusterSet.clusters[clusterIdx];
+    let numLightsInCluster = (*clusterPtr).numLights;
     var totalLightContrib = vec3f(0, 0, 0);
-    let numLightsInCluster = cluster.numLights;
     for (var lightIdx = 0u; lightIdx < numLightsInCluster; lightIdx++) {
-        let light = lightSet.lights[cluster.lightIndices[lightIdx]];
-        totalLightContrib += calculateLightContrib(light, pos, nor);
+        let lightIndex = (*clusterPtr).lightIndices[lightIdx];
+        let lightPtr = &lightSet.lights[lightIndex];
+        totalLightContrib += calculateLightContrib(lightPtr, pos, nor);
     }
 
    return diffuseColor.rgb * totalLightContrib.rgb;

@@ -44,10 +44,10 @@ fn rangeAttenuation(distance: f32) -> f32 {
     return clamp(1.f - pow(distance / ${lightRadius}, 4.f), 0.f, 1.f) / (distance * distance);
 }
 
-fn calculateLightContrib(light: Light, posWorld: vec3f, nor: vec3f) -> vec3f {
-    let vecToLight = light.pos - posWorld;
+fn calculateLightContrib(light: ptr<storage, Light>, posWorld: vec3f, nor: vec3f) -> vec3f {
+    let vecToLight = (*light).pos - posWorld;
     let distToLight = length(vecToLight);
 
     let lambert = max(dot(nor, normalize(vecToLight)), 0.f);
-    return light.color * lambert * rangeAttenuation(distToLight);
+    return (*light).color * lambert * rangeAttenuation(distToLight);
 }

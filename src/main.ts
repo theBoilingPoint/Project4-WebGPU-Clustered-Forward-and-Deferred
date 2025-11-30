@@ -99,7 +99,7 @@ function setRenderer(mode: string) {
         case renderModes.naive:
             renderer = new NaiveRenderer(stage);
             break;
-        case renderModes.forwardPlus:
+        case renderModes.clusteredForward:
             renderer = new ForwardPlusRenderer(stage);
             break;
         case renderModes.clusteredDeferred:
@@ -117,7 +117,7 @@ function setRenderer(mode: string) {
     }
 }
 
-const renderModes = { clusteredDeferred: 'clustered deferred', forwardPlus: 'forward+', naive: 'naive' };
+const renderModes = { clusteredDeferred: 'clustered deferred', clusteredForward: 'clustered forward', naive: 'naive' };
 let renderModeController = gui.add({ mode: renderModes.clusteredDeferred }, 'mode', renderModes);
 renderModeController.onChange((value: string) => {
     setRenderer(value);

@@ -133,7 +133,11 @@ fn main(@builtin(global_invocation_id) globalIdx: vec3u) {
         }
     }
 
-    // Write result
-    let cluster = Cluster(curBbox, curNumLights, curLightIdxArr);
-    clusterSet.clusters[clusterIdx] = cluster;
+    // Write result directly using pointer
+    let clusterPtr = &clusterSet.clusters[clusterIdx];
+    (*clusterPtr).viewSpaceBbox = curBbox;
+    (*clusterPtr).numLights = curNumLights;
+    for (var i = 0u; i < curNumLights; i++) {
+        (*clusterPtr).lightIndices[i] = curLightIdxArr[i];
+    }
 }
